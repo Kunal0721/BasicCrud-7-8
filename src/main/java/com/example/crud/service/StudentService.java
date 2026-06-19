@@ -26,4 +26,16 @@ public class StudentService {
 	public Student insert(Student st) {
 		return repo.save(st);
 	}
+	
+	public Student updateStudent(Long id, Student student) {
+		return repo.findById(id).map(a ->{
+			a.setName(student.getName());
+			a.setAge(student.getAge());
+			return repo.save(a);
+		}).orElseThrow(() -> new RuntimeException("Not found"));
+	}
+	
+	public void delete(Long id) {
+		repo.deleteById(id);
+	}
 }
