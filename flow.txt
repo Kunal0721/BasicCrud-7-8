@@ -1,0 +1,212 @@
+=========================================
+LIBRARY MANAGEMENT SYSTEM - API FLOW & DATA
+=========================================
+
+This document describes the step-by-step operations of the Library Management System, showing the exact API endpoints, request JSON structures, and response JSON structures for success and failure flows.
+
+--------------------------------------------------
+STEP 1: Register a Student (Borrower)
+--------------------------------------------------
+Before a user can borrow a book, they must be registered as a student in the system database.
+
+API Endpoint: POST /student
+Request Content-Type: application/json
+
+Request JSON:
+{
+  "name": "Jane Doe",
+  "age": 22
+}
+
+Success Response (200 OK):
+{
+  "id": 1,
+  "name": "Jane Doe",
+  "age": 22
+}
+
+--------------------------------------------------
+STEP 2: Add a Book to the Library
+--------------------------------------------------
+Add a new book catalog item to the library inventory. The system automatically sets "availableCopies" to match "totalCopies".
+
+API Endpoint: POST /books
+Request Content-Type: application/json
+
+Request JSON:
+{
+  "title": "Clean Code",
+  "author": "Robert C. Martin",
+  "isbn": "978-0132350884",
+  "totalCopies": 3
+}
+
+Success Response (200 OK):
+{
+  "id": 1,
+  "title": "Clean Code",
+  "author": "Robert C. Martin",
+  "isbn": "978-0132350884",
+  "totalCopies": 3,
+  "availableCopies": 3
+}
+
+--------------------------------------------------
+STEP 3: Search for Books
+--------------------------------------------------
+Find a book using a search query matching Title, Author, or ISBN.
+
+API Endpoint: GET /books/search?query=Clean
+Success Response (200 OK):
+[
+  {
+    "id": 1,
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "isbn": "978-0132350884",
+    "totalCopies": 3,
+    "availableCopies": 3
+  }
+]
+
+--------------------------------------------------
+STEP 4: Issue a Book to a Student (Transaction)
+--------------------------------------------------
+Borrows a book for a student.
+Behind the scenes, this runs in a database TRANSACTION:
+  1. Checks if the student exists.
+  2. Checks if the book exists.
+  3. Checks if the book has available copies (availableCopies > 0).
+  4. Checks if this student already has a pending active issue of the book.
+  5. If valid, decrements "availableCopies" of the book by 1.
+  6. Creates and returns a BookIssueRecord.
+
+API Endpoint: POST /library/issue
+Request Content-Type: application/json
+
+Request JSON:
+{
+  "studentId": 1,
+  "bookId": 1,
+  "durationDays": 14
+}
+
+Success Response (200 OK):
+{
+  "id": 1,
+  "student": {
+    "id": 1,
+    "name": "Jane Doe",
+    "age": 22
+  },
+  "book": {
+    "id": 1,
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "isbn": "978-0132350884",
+    "totalCopies": 3,
+    "availableCopies": 2
+  },
+  "issueDate": "2026-06-25",
+  "dueDate": "2026-07-09",
+  "returnDate": null,
+  "status": "ISSUED"
+}
+
+Failure Case A: Out of stock (availableCopies is 0)
+Response (500 Internal Server Error / JSON error):
+{
+  "message": "No available copies of this book left to issue!"
+}
+
+Failure Case B: Student has already borrowed a copy and not returned it yet
+Response (500 Internal Server Error / JSON error):
+{
+  "message": "Student already has an active issue record for this book!"
+}
+
+--------------------------------------------------
+STEP 5: Check Student Borrow Record
+--------------------------------------------------
+View borrow history for a specific student.
+
+API Endpoint: GET /library/student/1/issues
+Success Response (200 OK):
+[
+  {
+    "id": 1,
+    "student": {
+      "id": 1,
+      "name": "Jane Doe",
+      "age": 22
+    },
+    "book": {
+      "id": 1,
+      "title": "Clean Code",
+      "author": "Robert C. Martin",
+      "isbn": "978-0132350884",
+      "totalCopies": 3,
+      "availableCopies": 2
+    },
+    "issueDate": "2026-06-25",
+    "dueDate": "2026-07-09",
+    "returnDate": null,
+    "status": "ISSUED"
+  }
+]
+
+--------------------------------------------------
+STEP 6: Return a Book (Transaction)
+--------------------------------------------------
+Returns the borrowed book.
+Behind the scenes, this runs in a database TRANSACTION:
+  1. Finds the active transaction record where studentId and bookId match and returnDate is null.
+  2. Sets "returnDate" to today's date.
+  3. Sets status to "RETURNED".
+  4. Increments "availableCopies" of the book by 1.
+
+API Endpoint: POST /library/return
+Request Content-Type: application/json
+
+Request JSON:
+{
+  "studentId": 1,
+  "bookId": 1
+}
+
+Success Response (200 OK):
+{
+  "id": 1,
+  "student": {
+    "id": 1,
+    "name": "Jane Doe",
+    "age": 22
+  },
+  "book": {
+    "id": 1,
+    "title": "Clean Code",
+    "author": "Robert C. Martin",
+    "isbn": "978-0132350884",
+    "totalCopies": 3,
+    "availableCopies": 3
+  },
+  "issueDate": "2026-06-25",
+  "dueDate": "2026-07-09",
+  "returnDate": "2026-06-25",
+  "status": "RETURNED"
+}
+
+Failure Case: No active borrowing record exists for the student and book
+Response (500 Internal Server Error / JSON error):
+{
+  "message": "No active issue record found for student 1 and book 1"
+}
+
+--------------------------------------------------
+STEP 7: Check and Update Overdue Status
+--------------------------------------------------
+Triggers calculation to change status of active issues past their due date to "OVERDUE".
+
+API Endpoint: POST /library/issues/check-overdue
+Success Response (200 OK):
+"Overdue statuses updated successfully"
